@@ -41,6 +41,11 @@ const DEBUG = String(process.env.DEBUG || 'false').toLowerCase() === 'true';
 // Janitor / SillyTavern friendly toggles
 const SHOW_REASONING = String(process.env.SHOW_REASONING || 'true').toLowerCase() === 'true';
 const ENABLE_THINKING_MODE = String(process.env.ENABLE_THINKING_MODE || 'true').toLowerCase() === 'true';
+const CLEAR_THINKING = String(process.env.CLEAR_THINKING || 'true').toLowerCase() === 'true';
+const REASONING_EFFORT = String(process.env.REASONING_EFFORT || 'low').trim().toLowerCase();
+if (!['low', 'high', 'max'].includes(REASONING_EFFORT)) {
+  throw new Error('REASONING_EFFORT must be low, high, or max');
+}
 const INCLUDE_RAW_NIM_MODELS = String(process.env.INCLUDE_RAW_NIM_MODELS || 'true').toLowerCase() === 'true';
 
 if (!NIM_API_KEY) {
@@ -70,6 +75,7 @@ const MODEL_MAPPING = {
   'qwen/qwen3-next-80b-a3b-thinking': 'qwen/qwen3-next-80b-a3b-thinking',
   'z-ai/glm4.7': 'z-ai/glm4.7',
   'z-ai/glm5': 'z-ai/glm5',
+  'z-ai/glm-5.3': 'z-ai/glm-5.3',
   'stepfun-ai/step-3.5-flash': 'stepfun-ai/step-3.5-flash',
   'minimaxai/minimax-m2.5': 'minimaxai/minimax-m2.5',
 };
@@ -102,9 +108,31 @@ function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
-function ensureReasoningSettings(body) {
+function ensureReasoningSettings(body, upstreamModel) {
   const out = clone(body) || {};
   const extraBody = clone(out.extra_body) || {};
+
+  if (upstreamModel === 'z-ai/glm-5.3') {
+    // Axios sends raw JSON: SDK-style extra_body fields must be flattened.
+    const merged = { ...extraBody, ...out };
+    delete merged.extra_body;
+    merged.chat_template_kwargs = {
+      ...extraBody.chat_template_kwargs,
+      ...out.chat_template_kwargs
+    };
+    // GLM 5.3 always reasons and does not use enable_thinking.
+    delete merged.chat_template_kwargs.enable_thinking;
+    if (merged.chat_template_kwargs.clear_thinking === undefined) {
+      merged.chat_template_kwargs.clear_thinking = CLEAR_THINKING;
+    }
+    if (merged.reasoning_effort === undefined) {
+      merged.reasoning_effort = REASONING_EFFORT;
+    }
+    // Extra parameters cannot change the model selected by the route.
+    delete merged.model;
+    return merged;
+  }
+
   const chatTemplateKwargs = clone(extraBody.chat_template_kwargs) || {};
 
   if (ENABLE_THINKING_MODE && chatTemplateKwargs.enable_thinking === undefined) {
@@ -122,7 +150,7 @@ function ensureReasoningSettings(body) {
   return out;
 }
 
-function pickChatBody(body) {
+function pickChatBody(body, upstreamModel) {
   const allowed = [
     'messages',
     'temperature',
@@ -142,6 +170,7 @@ function pickChatBody(body) {
     'response_format',
     'user',
     'extra_body',
+    'chat_template_kwargs',
     'reasoning_effort',
     'include_reasoning',
     'logprobs'
@@ -151,7 +180,7 @@ function pickChatBody(body) {
   for (const key of allowed) {
     if (body[key] !== undefined) out[key] = clone(body[key]);
   }
-  return ensureReasoningSettings(out);
+  return ensureReasoningSettings(out, upstreamModel);
 }
 
 function mergeReasoningIntoContent(message) {
@@ -326,6 +355,7 @@ app.get('/health', (_req, res) => {
     service: 'nim-openai-proxy',
     upstream: NIM_API_BASE,
     has_api_key: Boolean(NIM_API_KEY),
+    glm_5_3_defaults: { clear_thinking: CLEAR_THINKING, reasoning_effort: REASONING_EFFORT },
     show_reasoning: SHOW_REASONING,
     enable_thinking_mode: ENABLE_THINKING_MODE
   });
@@ -363,7 +393,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
   const upstreamBody = {
     model: upstreamModel,
-    ...pickChatBody(req.body)
+    ...pickChatBody(req.body, upstreamModel)
   };
 
   if (DEBUG) {
