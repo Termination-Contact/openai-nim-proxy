@@ -76,6 +76,7 @@ const MODEL_MAPPING = {
   'z-ai/glm4.7': 'z-ai/glm4.7',
   'z-ai/glm5': 'z-ai/glm5',
   'z-ai/glm-5.3': 'z-ai/glm-5.3',
+  'z-ai/glm-5.3-flash': 'z-ai/glm-5.3-flash',
   'stepfun-ai/step-3.5-flash': 'stepfun-ai/step-3.5-flash',
   'minimaxai/minimax-m2.5': 'minimaxai/minimax-m2.5',
 };
