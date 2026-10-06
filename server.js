@@ -76,7 +76,6 @@ const MODEL_MAPPING = {
   'z-ai/glm4.7': 'z-ai/glm4.7',
   'z-ai/glm5': 'z-ai/glm5',
   'z-ai/glm-5.3': 'z-ai/glm-5.3',
-  'z-ai/glm-5.3-flash': 'z-ai/glm-5.3-flash',
   'stepfun-ai/step-3.5-flash': 'stepfun-ai/step-3.5-flash',
   'minimaxai/minimax-m2.5': 'minimaxai/minimax-m2.5',
 };
@@ -113,51 +112,26 @@ function ensureReasoningSettings(body, upstreamModel) {
   const out = clone(body) || {};
   const extraBody = clone(out.extra_body) || {};
 
-  // GLM-5.3 normal
-if (upstreamModel === 'z-ai/glm-5.3') {
-  const merged = { ...extraBody, ...out };
-  delete merged.extra_body;
-
-  merged.chat_template_kwargs = {
-    ...extraBody.chat_template_kwargs,
-    ...out.chat_template_kwargs
-  };
-
-  delete merged.chat_template_kwargs.enable_thinking;
-
-  if (merged.chat_template_kwargs.clear_thinking === undefined) {
-    merged.chat_template_kwargs.clear_thinking = CLEAR_THINKING;
+  if (upstreamModel === 'z-ai/glm-5.3') {
+    // Axios sends raw JSON: SDK-style extra_body fields must be flattened.
+    const merged = { ...extraBody, ...out };
+    delete merged.extra_body;
+    merged.chat_template_kwargs = {
+      ...extraBody.chat_template_kwargs,
+      ...out.chat_template_kwargs
+    };
+    // GLM 5.3 always reasons and does not use enable_thinking.
+    delete merged.chat_template_kwargs.enable_thinking;
+    if (merged.chat_template_kwargs.clear_thinking === undefined) {
+      merged.chat_template_kwargs.clear_thinking = CLEAR_THINKING;
+    }
+    if (merged.reasoning_effort === undefined) {
+      merged.reasoning_effort = REASONING_EFFORT;
+    }
+    // Extra parameters cannot change the model selected by the route.
+    delete merged.model;
+    return merged;
   }
-
-  if (merged.reasoning_effort === undefined) {
-    merged.reasoning_effort = REASONING_EFFORT;
-  }
-
-  delete merged.top_k;
-  delete merged.min_p;
-  delete merged.model;
-
-  return merged;
-}
-
-// GLM-5.3-Flash
-if (upstreamModel === 'z-ai/glm-5.3-flash') {
-  const merged = { ...extraBody, ...out };
-
-  // NVIDIA's hosted Flash endpoint does not accept these.
-  delete merged.extra_body;
-  delete merged.chat_template_kwargs;
-  delete merged.top_k;
-  delete merged.min_p;
-  delete merged.include_reasoning;
-  delete merged.logprobs;
-
-  // Flash supports reasoning_effort directly.
-  merged.reasoning_effort = REASONING_EFFORT;
-
-  delete merged.model;
-  return merged;
-}
 
   const chatTemplateKwargs = clone(extraBody.chat_template_kwargs) || {};
 
