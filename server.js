@@ -112,7 +112,10 @@ function ensureReasoningSettings(body, upstreamModel) {
   const out = clone(body) || {};
   const extraBody = clone(out.extra_body) || {};
 
-  if (upstreamModel === 'z-ai/glm-5.3') {
+  if (
+  upstreamModel === 'z-ai/glm-5.3' ||
+  upstreamModel === 'z-ai/glm-5.3-flash'
+) {
     // Axios sends raw JSON: SDK-style extra_body fields must be flattened.
     const merged = { ...extraBody, ...out };
     delete merged.extra_body;
